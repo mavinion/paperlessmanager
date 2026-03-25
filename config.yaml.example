@@ -1,0 +1,111 @@
+# Paperless AI Manager Konfiguration
+# Kopiere diese Datei zu config.yaml und passe die Werte an.
+
+paperless:
+  url: "http://localhost:8000"
+  token: "dein-api-token-hier"
+
+ai:
+  # ============================================================
+  # KI-PROVIDER KONFIGURATION
+  # ============================================================
+  # Unterstützte Provider (Format: provider/model):
+  #
+  # LOKAL:
+  #   ollama/llama3.2          - Ollama (lokal, kostenlos)
+  #   ollama/mistral           - Ollama (lokal, kostenlos)
+  #
+  # CLOUD:
+  #   openai/gpt-4             - OpenAI GPT-4
+  #   openai/gpt-3.5-turbo     - OpenAI GPT-3.5
+  #   anthropic/claude-3-sonnet-20240229 - Anthropic Claude
+  #   anthropic/claude-3-haiku-20240307  - Anthropic Claude (schneller)
+  #   azure/gpt-4              - Azure OpenAI
+  #   gemini/gemini-pro        - Google Gemini
+  #
+  # CUSTOM (OpenAI-kompatible API):
+  #   openai/custom-model      - Eigene API (z.B. LocalAI, vLLM)
+  # ============================================================
+  
+  model: "ollama/llama3.2"
+  
+  # API-Key (für Cloud-Provider)
+  # Kann auch über Umgebungsvariable AI_API_KEY gesetzt werden
+  # api_key: "sk-..."
+  
+  # API Base URL (für Ollama, Azure, Custom APIs)
+  # api_base: "http://localhost:11434"  # Ollama
+  # api_base: "https://myresource.openai.azure.com"  # Azure
+  # api_base: "http://localhost:8080/v1"  # Custom API
+  
+  # Azure-spezifisch
+  # api_version: "2024-02-01"
+  
+  # ============================================================
+  # LEGACY-UNTERSTÜTZUNG (wird weiterhin unterstützt)
+  # ============================================================
+  # provider: "ollama"  # oder "openai"
+  #
+  # openai:
+  #   api_key: "${OPENAI_API_KEY}"
+  #   model: "gpt-4"
+  #
+  # ollama:
+  #   url: "http://localhost:11434"
+  #   model: "llama3.2"
+
+analysis:
+  # "de" für Deutsch, "en" für Englisch
+  language: "de"
+  
+  # Automatisch Änderungen anwenden (false = nur Vorschläge)
+  auto_apply: false
+  
+  # Maximale Anzahl Dokumente pro Durchlauf
+  max_documents: 100
+  
+  # Welche Metadaten sollen extrahiert werden
+  extract:
+    tags: true
+    correspondent: true
+    document_type: true
+    title: true
+    date: true
+    custom_fields: false
+
+# ============================================================
+# BEISPIELE FÜR VERSCHIEDENE PROVIDER
+# ============================================================
+
+# --- Ollama (lokal, kostenlos) ---
+# ai:
+#   model: "ollama/llama3.2"
+#   api_base: "http://localhost:11434"
+
+# --- OpenAI ---
+# ai:
+#   model: "openai/gpt-4"
+#   api_key: "sk-..."
+
+# --- Anthropic Claude ---
+# ai:
+#   model: "anthropic/claude-3-sonnet-20240229"
+#   api_key: "sk-ant-..."
+
+# --- Azure OpenAI ---
+# ai:
+#   model: "azure/gpt-4"
+#   api_key: "..."
+#   api_base: "https://myresource.openai.azure.com"
+#   api_version: "2024-02-01"
+
+# --- Google Gemini ---
+# ai:
+#   model: "gemini/gemini-pro"
+#   api_key: "..."
+
+# --- Custom OpenAI-kompatible API (z.B. LocalAI, vLLM) ---
+# ai:
+#   model: "openai/my-model"
+#   api_base: "http://localhost:8080/v1"
+#   api_key: "dummy"

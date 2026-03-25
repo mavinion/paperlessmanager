@@ -1,0 +1,47 @@
+# Configuration & secrets
+config.yaml
+.env
+.env.*
+
+# Application data
+changes_log.yaml
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+eggs/
+*.whl
+develop-eggs/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

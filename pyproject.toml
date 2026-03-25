@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paperless-ai-manager"
+version = "0.1.0"
+description = "KI-gestütztes Dokumentenmanagement für Paperless-NGX"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Paperless AI Manager"}
+]
+dependencies = [
+    "typer>=0.9.0",
+    "requests>=2.30.0",
+    "litellm>=1.40.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "rich>=13.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+paperless-ai = "src.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]

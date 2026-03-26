@@ -44,13 +44,16 @@ class LiteLLMProvider(AIProvider):
         """Erstellt den LiteLLM Model-String."""
         # Flexible Model-Konfiguration (empfohlen)
         if self.config.model and "/" in self.config.model:
+            # ollama/ -> ollama_chat/ für bessere thinking-Modell Unterstützung
+            if self.config.model.startswith("ollama/"):
+                return self.config.model.replace("ollama/", "ollama_chat/", 1)
             return self.config.model
         
         # Legacy-Unterstützung
         if self.config.provider == "openai":
             return f"openai/{self.config.openai.model}"
         elif self.config.provider == "ollama":
-            return f"ollama/{self.config.ollama.model}"
+            return f"ollama_chat/{self.config.ollama.model}"
         else:
             # Fallback: Verwende model direkt
             return self.config.model
@@ -278,7 +281,7 @@ Return JSON:
                 logger.debug("Anthropic API Key gesetzt")
         
         # Ollama
-        elif model_lower.startswith("ollama/"):
+        elif model_lower.startswith("ollama/") or model_lower.startswith("ollama_chat/"):
             base_url = self.config.api_base or self.config.ollama.url
             base_url = base_url.rstrip("/")
             # Remove trailing API path to get clean base URL for LiteLLM
@@ -357,7 +360,7 @@ Return JSON:
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=0.1,
-                max_tokens=1500,
+                max_tokens=4096,
                 stream=False
             )
             elapsed = time.time() - start_time
@@ -484,339 +487,6 @@ Return JSON:
             )
 
 
-
-
-class OllamaProvider(AIProvider):
-    """
-    Direkter Ollama-Provider ohne LiteLLM.
-    Verwendet /api/chat endpoint, der thinking-Modelle korrekt unterstützt.
-    """
-    
-    def __init__(self, config: AIConfig):
-        self.config = config
-        self.base_url = (config.api_base or config.ollama.url).rstrip('/')
-        # Clean trailing API paths
-        for suffix in ['/api/generate', '/api/chat', '/api']:
-            if self.base_url.endswith(suffix):
-                self.base_url = self.base_url[:-len(suffix)].rstrip('/')
-                break
-        self.model = config.ollama.model
-    
-    def _get_system_prompt(self, language: str) -> str:
-        if language == "de":
-            return """Du bist ein präziser Dokumentenmanagement-Assistent.
-Analysiere Dokumente und extrahiere Metadaten.
-
-KORRESPONDENT (Absender):
-- Derjenige, der das Dokument ERSTELLT und VERSENDET hat
-- Typische Positionen: Briefkopf oben, "Von:", "Ihr:", Unterschrift, Firmenstempel
-- NICHT der Empfänger ("An:", "Herr/Frau...", "Sehr geehrte/r...")
-- NICHT die Adresse des Empfängers
-
-DOKUMENTTYP-REGELN:
-- Rechnung: Jemand will Geld (Rechnungsnummer, Betrag, Fälligkeit)
-- Bescheid: Behörde entscheidet (Finanzamt, Rentenversicherung)
-- Vertrag: Vereinbarung zwischen Parteien
-- Schreiben: Allgemeine Mitteilung ohne Zahlungsaufforderung
-
-TAG-REGELN:
-- Maximal 3 Tags, nur die relevantesten
-- Tags basieren auf INHALT, nicht nur Titel
-- Wenn ein Tag nicht passt, entfernen statt hinzufügen
-
-Antworte AUSSCHLIESSLICH mit gültigem JSON. Denke nicht lange nach - antworte direkt."""
-        else:
-            return """You are a precise document management assistant.
-Analyze documents and extract metadata.
-
-CORRESPONDENT (Sender):
-- The entity that CREATED and SENT the document
-- Typical positions: Letterhead at top, "From:", "Sincerely,", signature, company stamp
-- NOT the recipient ("To:", "Dear Mr/Mrs...", "Dear Sir/Madam...")
-- NOT the recipient's address
-
-DOCUMENT TYPE RULES:
-- Invoice: Someone wants money (invoice number, amount, due date)
-- Official notice: Authority decides (tax office, pension office)
-- Contract: Agreement between parties
-- Letter: General communication without payment request
-
-TAG RULES:
-- Maximum 3 tags, only the most relevant
-- Tags based on CONTENT, not just title
-- If a tag doesn't fit, remove instead of add
-
-Respond ONLY with valid JSON. Do not think - respond directly."""
-    
-    def _get_user_prompt(self, document_content, document_title, current_tags,
-                         current_correspondent, current_document_type,
-                         available_tags, available_correspondents,
-                         available_document_types, language):
-        content_preview = document_content[:3000] if document_content else ""
-        
-        current_info = []
-        current_info.append(f"Aktuelle Tags: {', '.join(current_tags)}" if current_tags else "Aktuelle Tags: KEINE")
-        current_info.append(f"Aktueller Korrespondent: {current_correspondent}" if current_correspondent else "Aktueller Korrespondent: KEINER")
-        current_info.append(f"Aktueller Dokumenttyp: {current_document_type}" if current_document_type else "Aktueller Dokumenttyp: KEINER")
-        current_block = "\n".join(current_info)
-        
-        if language == "de":
-            return f"""Analysiere dieses Dokument Schritt für Schritt.
-
-TITEL: {document_title}
-
-INHALT:
-{content_preview}
-
-{current_block}
-
-VERFÜGBARE EINTRÄGE:
-- Tags: {', '.join(available_tags[:50]) if available_tags else 'Keine'}
-- Korrespondenten: {', '.join(available_correspondents[:30]) if available_correspondents else 'Keine'}
-- Dokumenttypen: {', '.join(available_document_types[:20]) if available_document_types else 'Keine'}
-
-Gib JSON zurück:
-{{
-  "tag_actions": [
-    {{"tag": "tagname", "action": "add", "is_new": false, "confidence": 0.9}},
-    {{"tag": "falscher_tag", "action": "remove", "is_new": false, "confidence": 0.8}}
-  ],
-  "correspondent": {{
-    "suggested_value": "Name des Absenders oder null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "document_type": {{
-    "suggested_value": "Typ oder null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "title": {{
-    "suggested_value": "Verbesserter Titel oder null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "extracted_date": "YYYY-MM-DD oder null",
-  "overall_confidence": 0.85,
-  "reasoning": "Begründung mit Textstellen"
-}}"""
-        else:
-            return f"""Analyze this document step by step.
-
-TITLE: {document_title}
-
-CONTENT:
-{content_preview}
-
-{current_block}
-
-AVAILABLE ENTRIES:
-- Tags: {', '.join(available_tags[:50]) if available_tags else 'None'}
-- Correspondents: {', '.join(available_correspondents[:30]) if available_correspondents else 'None'}
-- Document types: {', '.join(available_document_types[:20]) if available_document_types else 'None'}
-
-Return JSON:
-{{
-  "tag_actions": [
-    {{"tag": "tagname", "action": "add", "is_new": false, "confidence": 0.9}},
-    {{"tag": "wrong_tag", "action": "remove", "is_new": false, "confidence": 0.8}}
-  ],
-  "correspondent": {{
-    "suggested_value": "Sender name or null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "document_type": {{
-    "suggested_value": "Type or null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "title": {{
-    "suggested_value": "Improved title or null",
-    "is_new": false,
-    "confidence": 0.9
-  }},
-  "extracted_date": "YYYY-MM-DD or null",
-  "overall_confidence": 0.85,
-  "reasoning": "Reasoning with text passages"
-}}"""
-    
-    def _call_ollama(self, messages: list[dict]) -> str:
-        """Direkt Ollama /api/chat aufrufen."""
-        import requests
-        
-        url = f"{self.base_url}/api/chat"
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "stream": False,
-            "options": {
-                "temperature": 0.1,
-                "num_predict": 4096
-            }
-        }
-        
-        logger.debug(f"Ollama Request: {url} (model: {self.model})")
-        
-        resp = requests.post(url, json=payload, timeout=120)
-        resp.raise_for_status()
-        data = resp.json()
-        
-        msg = data.get("message", {})
-        content = msg.get("content", "")
-        thinking = msg.get("thinking", "")
-        
-        logger.debug(f"Ollama Response: content={len(content)} chars, thinking={len(thinking)} chars")
-        
-        if content:
-            logger.debug(f"Ollama Content: {content[:500]}")
-        
-        # Bei thinking-Modellen: falls content leer, versuche JSON aus thinking zu extrahieren
-        if not content and thinking:
-            logger.debug(f"Ollama Thinking: {thinking[:500]}")
-            # Versuche JSON aus thinking zu extrahieren
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', thinking)
-            if json_match:
-                content = json_match.group(0)
-                logger.debug(f"JSON aus thinking extrahiert: {content[:200]}")
-        
-        return content
-    
-    def analyze_document(self, document_content, document_title, current_tags,
-                        current_correspondent, current_document_type,
-                        available_tags, available_correspondents,
-                        available_document_types, language="de"):
-        system_prompt = self._get_system_prompt(language)
-        user_prompt = self._get_user_prompt(
-            document_content, document_title, current_tags,
-            current_correspondent, current_document_type,
-            available_tags, available_correspondents,
-            available_document_types, language
-        )
-        
-        logger.debug(f"Prompt-Größe: {len(user_prompt)} Zeichen")
-        
-        try:
-            start_time = time.time()
-            response_text = self._call_ollama([
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ])
-            elapsed = time.time() - start_time
-            
-            logger.debug(f"KI-Response ({elapsed:.1f}s, {len(response_text)} Zeichen)")
-            
-            if response_text:
-                logger.debug(f"KI-Response (raw): {response_text[:500]}")
-            
-            if not response_text or not response_text.strip():
-                return AnalysisResult(
-                    document_id=0,
-                    overall_confidence=0.0,
-                    reasoning="KI hat eine leere Antwort zurückgegeben. Prüfe ob das Modell existiert und antwortet."
-                )
-            
-            json_text = response_text.strip()
-            
-            # Markdown-Code-Blöcke entfernen
-            if "```json" in json_text:
-                json_text = json_text.split("```json")[1].split("```")[0].strip()
-            elif "```" in json_text:
-                json_text = json_text.split("```")[1].split("```")[0].strip()
-            
-            # JSON aus Text extrahieren
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', json_text)
-            if json_match:
-                json_text = json_match.group(0)
-            
-            logger.debug(f"JSON: {json_text[:200]}...")
-            data = json.loads(json_text)
-            
-            # Tag-Aktionen parsen
-            tag_actions = []
-            for ta in data.get("tag_actions", []):
-                tag_actions.append(TagAction(
-                    tag=ta.get("tag", ""),
-                    action=ta.get("action", "add"),
-                    is_new=ta.get("is_new", False) or ta.get("tag", "").startswith("NEU:") or ta.get("tag", "").startswith("NEW:"),
-                    confidence=ta.get("confidence", 0.5)
-                ))
-            
-            # Korrespondent
-            corr_data = data.get("correspondent", {})
-            correspondent_suggestion = None
-            if corr_data and corr_data.get("suggested_value"):
-                suggested = corr_data["suggested_value"]
-                is_new = corr_data.get("is_new", False) or suggested.startswith("NEU:") or suggested.startswith("NEW:")
-                if suggested != current_correspondent:
-                    correspondent_suggestion = MetadataSuggestion(
-                        field="correspondent",
-                        current_value=current_correspondent,
-                        suggested_value=suggested.replace("NEU:", "").replace("NEW:", "").strip() if is_new else suggested,
-                        is_new=is_new,
-                        confidence=corr_data.get("confidence", 0.5)
-                    )
-            
-            # Dokumenttyp
-            dt_data = data.get("document_type", {})
-            document_type_suggestion = None
-            if dt_data and dt_data.get("suggested_value"):
-                suggested = dt_data["suggested_value"]
-                is_new = dt_data.get("is_new", False) or suggested.startswith("NEU:") or suggested.startswith("NEW:")
-                if suggested != current_document_type:
-                    document_type_suggestion = MetadataSuggestion(
-                        field="document_type",
-                        current_value=current_document_type,
-                        suggested_value=suggested.replace("NEU:", "").replace("NEW:", "").strip() if is_new else suggested,
-                        is_new=is_new,
-                        confidence=dt_data.get("confidence", 0.5)
-                    )
-            
-            # Titel
-            title_data = data.get("title", {})
-            title_suggestion = None
-            if title_data and title_data.get("suggested_value"):
-                suggested = title_data["suggested_value"]
-                if suggested != document_title:
-                    title_suggestion = MetadataSuggestion(
-                        field="title",
-                        current_value=document_title,
-                        suggested_value=suggested,
-                        is_new=False,
-                        confidence=title_data.get("confidence", 0.5)
-                    )
-            
-            return AnalysisResult(
-                document_id=0,
-                document_title=document_title,
-                tag_actions=tag_actions,
-                correspondent_suggestion=correspondent_suggestion,
-                document_type_suggestion=document_type_suggestion,
-                title_suggestion=title_suggestion,
-                extracted_date=data.get("extracted_date"),
-                overall_confidence=data.get("overall_confidence", 0.0),
-                reasoning=data.get("reasoning", "")
-            )
-        
-        except json.JSONDecodeError as e:
-            return AnalysisResult(
-                document_id=0,
-                overall_confidence=0.0,
-                reasoning=f"JSON-Parsing fehlgeschlagen: {str(e)}"
-            )
-        except Exception as e:
-            return AnalysisResult(
-                document_id=0,
-                overall_confidence=0.0,
-                reasoning=f"KI-Fehler: {str(e)}"
-            )
-
-
 def create_ai_provider(config: AIConfig) -> AIProvider:
     """Factory-Funktion für KI-Provider."""
-    # Ollama direkt ohne LiteLLM (bessere thinking-Modell Unterstützung)
-    if config.model.startswith("ollama/") or config.provider == "ollama":
-        return OllamaProvider(config)
     return LiteLLMProvider(config)

@@ -39,7 +39,14 @@ def setup_logging(debug: bool):
     logging.getLogger("src.ai.provider").setLevel(level)
     
     # Externe Bibliotheken auf WARNING setzen (weniger Rauschen)
-    logging.getLogger("litellm").setLevel(logging.WARNING)
+    litellm_logger = logging.getLogger("litellm")
+    litellm_logger.setLevel(logging.WARNING)
+    litellm_logger.propagate = False
+    for name in logging.root.manager.loggerDict:
+        if name.startswith("litellm."):
+            child = logging.getLogger(name)
+            child.setLevel(logging.WARNING)
+            child.propagate = False
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)

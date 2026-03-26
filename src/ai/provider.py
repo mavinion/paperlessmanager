@@ -280,7 +280,13 @@ Return JSON:
         # Ollama
         elif model_lower.startswith("ollama/"):
             base_url = self.config.api_base or self.config.ollama.url
-            base_url = base_url.rstrip('/')
+            base_url = base_url.rstrip("/")
+            # Remove trailing API path to get clean base URL for LiteLLM
+            for suffix in ["/api/generate", "/api/chat", "/api"]:
+                if base_url.endswith(suffix):
+                    base_url = base_url[:-len(suffix)]
+                    break
+            base_url = base_url.rstrip("/")
             os.environ["OLLAMA_API_BASE"] = base_url
             logger.debug(f"Ollama Base URL: {base_url}")
         

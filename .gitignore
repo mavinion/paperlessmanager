@@ -5,6 +5,7 @@ config.yaml
 
 # Application data
 changes_log.yaml
+reviewed_ids.yaml
 *.log
 
 # Python

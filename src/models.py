@@ -81,3 +81,44 @@ class DocumentInfo(BaseModel):
     correspondent: Optional[str] = None
     document_type: Optional[str] = None
     created: Optional[datetime] = None
+
+
+class ReviewedTracker:
+    """Trackt bereits verarbeitete Dokumente."""
+    
+    def __init__(self, filepath: str = "reviewed_ids.yaml"):
+        self.filepath = filepath
+        self.reviewed_ids: set[int] = set()
+        self._load()
+    
+    def _load(self):
+        """Gespeicherte IDs laden."""
+        import yaml
+        from pathlib import Path
+        path = Path(self.filepath)
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or []
+            self.reviewed_ids = set(data)
+    
+    def save(self):
+        """IDs speichern."""
+        import yaml
+        from pathlib import Path
+        with open(self.filepath, "w", encoding="utf-8") as f:
+            yaml.dump(sorted(self.reviewed_ids), f, default_flow_style=False)
+    
+    def add(self, ids: list[int]):
+        """IDs hinzufügen."""
+        self.reviewed_ids.update(ids)
+    
+    def is_reviewed(self, doc_id: int) -> bool:
+        """Prüfen ob bereits verarbeitet."""
+        return doc_id in self.reviewed_ids
+    
+    def reset(self):
+        """Alle Einträge löschen."""
+        self.reviewed_ids.clear()
+    
+    def __len__(self):
+        return len(self.reviewed_ids)

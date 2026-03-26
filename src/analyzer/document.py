@@ -187,18 +187,48 @@ class DocumentAnalyzer:
         self,
         limit: int = 100,
         untagged_only: bool = False,
-        all_docs: bool = False
+        all_docs: bool = False,
+        skip_reviewed: set[int] = None
     ) -> list[DocumentInfo]:
         """
         Dokumente für die Review abrufen.
+        Wenn skip_reviewed gesetzt ist, werden bereits verarbeitete Dokumente
+        übersprungen und so lange weitere geholt bis limit erreicht ist.
         """
-        if all_docs:
+        if all_docs or skip_reviewed is None:
+            # Kein Skip-Filter
+            if untagged_only:
+                return self.paperless.get_documents(limit=limit, untagged_only=True)
             return self.paperless.get_documents(limit=limit)
-        elif untagged_only:
-            return self.paperless.get_documents(limit=limit, untagged_only=True)
-        else:
-            # Standard: Alle Dokumente
-            return self.paperless.get_documents(limit=limit)
+        
+        # Mit Skip-Filter: Dokumente in Batches holen bis limit erreicht
+        result = []
+        offset = 0
+        batch_size = max(limit * 2, 20)
+        max_fetch = limit * 10  # Sicherheitslimit
+        
+        while len(result) < limit and offset < max_fetch:
+            if untagged_only:
+                batch = self.paperless.get_documents(
+                    limit=batch_size, offset=offset, untagged_only=True
+                )
+            else:
+                batch = self.paperless.get_documents(
+                    limit=batch_size, offset=offset
+                )
+            
+            if not batch:
+                break
+            
+            for doc in batch:
+                if doc.id not in skip_reviewed:
+                    result.append(doc)
+                    if len(result) >= limit:
+                        break
+            
+            offset += batch_size
+        
+        return result
     
     def search(self, query: str, limit: int = 20) -> list[DocumentInfo]:
         """Natürliche Suche in Dokumenten."""

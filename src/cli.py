@@ -10,7 +10,7 @@ from rich.logging import RichHandler
 
 from src.config import load_config
 from src.analyzer.document import DocumentAnalyzer
-from src.models import AnalysisResult, TagAction
+from src.models import AnalysisResult, TagAction, ReviewedTracker
 
 app = typer.Typer(
     name="paperless-ai",
@@ -104,11 +104,29 @@ def init():
     console.print("[yellow]Bitte passe die Werte in config.yaml an.[/yellow]")
 
 
+@app.command()
+def reset():
+    """Verarbeitete Dokumente zurücksetzen."""
+    tracker = ReviewedTracker()
+    count = len(tracker)
+    
+    if count == 0:
+        console.print("[yellow]Keine verarbeiteten Dokumente vorhanden.[/yellow]")
+        return
+    
+    if Confirm.ask(f"[yellow]{count} verarbeitete Dokumente zurücksetzen?[/yellow]"):
+        tracker.reset()
+        tracker.save()
+        console.print("[green]✓ Zurückgesetzt.[/green]")
+    else:
+        console.print("[dim]Abgebrochen.[/dim]")
+
+
 @app.command(name="review")
 def review(
     document_id: Optional[int] = typer.Option(None, "--id", "-i", help="Einzelnes Dokument reviewen"),
     untagged: bool = typer.Option(False, "--untagged", "-u", help="Nur ungetaggte Dokumente"),
-    all_docs: bool = typer.Option(False, "--all", "-a", help="Alle Dokumente durchgehen"),
+    all_docs: bool = typer.Option(False, "--all", "-a", help="Bereits verarbeitete einbeziehen"),
     limit: int = typer.Option(50, "--limit", "-l", help="Maximale Anzahl Dokumente"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Statusmeldungen anzeigen"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Debug-Ausgaben anzeigen"),
@@ -126,6 +144,9 @@ def review(
         log_info(f"Verbinde mit Paperless ({config.paperless.url})...")
         log_success("Verbunden.")
         
+        # Review-Tracker laden
+        tracker = ReviewedTracker()
+        
         if document_id:
             # Einzelnes Dokument
             log_info(f"Lade Dokument #{document_id}...")
@@ -133,18 +154,23 @@ def review(
             docs = [d for d in docs if d]
         else:
             # Liste von Dokumenten
+            skip = None if all_docs else tracker.reviewed_ids
             log_info("Lade Dokumente...")
             docs = analyzer.get_documents_for_review(
                 limit=limit,
                 untagged_only=untagged,
-                all_docs=all_docs
+                all_docs=all_docs,
+                skip_reviewed=skip
             )
         
         if not docs:
-            console.print("[yellow]Keine Dokumente gefunden.[/yellow]")
+            if not all_docs and len(tracker) > 0:
+                console.print("[yellow]Keine neuen Dokumente gefunden. Nutze --all um bereits verarbeitete erneut anzuzeigen.[/yellow]")
+            else:
+                console.print("[yellow]Keine Dokumente gefunden.[/yellow]")
             return
         
-        log_success(f"{len(docs)} Dokumente zum Review gefunden.\n")
+        log_success(f"{len(docs)} Dokumente zum Review gefunden.")
         
         for i, doc in enumerate(docs):
             console.print(f"\n[dim]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/dim]")
@@ -177,6 +203,8 @@ def review(
                 log_info("Wende alle Änderungen an...")
                 changes = analyzer.apply_result(result)
                 analyzer.save_changes_log()
+                tracker.add([doc.id])
+                tracker.save()
                 log_success(f"{len(changes)} Änderungen angewendet.")
             elif isinstance(action, dict):
                 # Einzelne Aktionen ausgewählt
@@ -189,6 +217,9 @@ def review(
                     apply_title=action.get("title", False)
                 )
                 analyzer.save_changes_log()
+                if changes:
+                    tracker.add([doc.id])
+                    tracker.save()
                 log_success(f"{len(changes)} Änderungen angewendet.")
 
 
@@ -325,6 +356,7 @@ def analyze(
     auto: bool = typer.Option(False, "--auto", help="Automatisch anwenden (ohne Nachfrage)"),
     document_id: Optional[int] = typer.Option(None, "--id", "-i", help="Einzelnes Dokument"),
     untagged: bool = typer.Option(False, "--untagged", "-u", help="Nur ungetaggte Dokumente"),
+    all_docs: bool = typer.Option(False, "--all", "-a", help="Bereits verarbeitete einbeziehen"),
     limit: int = typer.Option(10, "--limit", "-l", help="Maximale Anzahl"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Statusmeldungen anzeigen"),
     debug: bool = typer.Option(False, "--debug", "-d", help="Debug-Ausgaben anzeigen"),
@@ -338,6 +370,9 @@ def analyze(
     
     config = get_config(config_path)
     
+    # Review-Tracker laden
+    tracker = ReviewedTracker()
+    
     with DocumentAnalyzer(config) as analyzer:
         log_info(f"Verbinde mit Paperless ({config.paperless.url})...")
         log_success("Verbunden.")
@@ -347,15 +382,21 @@ def analyze(
             docs = [analyzer.paperless.get_document(document_id)]
             docs = [d for d in docs if d]
         else:
+            skip = None if all_docs else tracker.reviewed_ids
             filter_desc = "ungetaggte " if untagged else ""
             log_info(f"Lade {filter_desc}Dokumente (max: {limit})...")
             docs = analyzer.get_documents_for_review(
                 limit=limit,
-                untagged_only=untagged
+                untagged_only=untagged,
+                all_docs=all_docs,
+                skip_reviewed=skip
             )
         
         if not docs:
-            console.print("[yellow]Keine Dokumente gefunden.[/yellow]")
+            if not all_docs and len(tracker) > 0:
+                console.print("[yellow]Keine neuen Dokumente gefunden. Nutze --all um bereits verarbeitete erneut anzuzeigen.[/yellow]")
+            else:
+                console.print("[yellow]Keine Dokumente gefunden.[/yellow]")
             return
         
         log_success(f"{len(docs)} Dokumente gefunden.")
@@ -394,13 +435,19 @@ def analyze(
             # Automatisch anwenden
             log_info("Wende hohe-Konfidenz-Vorschläge automatisch an...")
             total_changes = 0
+            applied_doc_ids = []
             for doc, result in results:
                 if result.overall_confidence >= 0.7:
                     changes = analyzer.apply_result(result)
                     total_changes += len(changes)
+                    if changes:
+                        applied_doc_ids.append(doc.id)
                     log_debug(f"  #{doc.id}: {len(changes)} Änderungen")
             
             analyzer.save_changes_log()
+            if applied_doc_ids:
+                tracker.add(applied_doc_ids)
+                tracker.save()
             console.print(f"\n[green]✓ {total_changes} Änderungen automatisch angewendet.[/green]")
         else:
             # Nachfragen
@@ -409,11 +456,17 @@ def analyze(
                 if Confirm.ask(f"\n[cyan]{len(high_conf)} Vorschläge mit hoher Konfidenz anwenden?[/cyan]"):
                     log_info("Wende Änderungen an...")
                     total_changes = 0
+                    applied_doc_ids = []
                     for doc, result in high_conf:
                         changes = analyzer.apply_result(result)
                         total_changes += len(changes)
+                        if changes:
+                            applied_doc_ids.append(doc.id)
                     
                     analyzer.save_changes_log()
+                    if applied_doc_ids:
+                        tracker.add(applied_doc_ids)
+                        tracker.save()
                     console.print(f"[green]✓ {total_changes} Änderungen angewendet.[/green]")
 
 

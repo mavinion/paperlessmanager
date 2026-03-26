@@ -353,6 +353,12 @@ Return JSON:
         
         try:
             start_time = time.time()
+            
+            # Ollama thinking-Modell: thinking deaktivieren damit Tokens für Output genutzt werden
+            extra = {}
+            if self.model.startswith("ollama_chat/") or self.model.startswith("ollama/"):
+                extra["extra_body"] = {"think": False}
+            
             response = litellm.completion(
                 model=self.model,
                 messages=[
@@ -361,7 +367,8 @@ Return JSON:
                 ],
                 temperature=0.1,
                 max_tokens=4096,
-                stream=False
+                stream=False,
+                **extra
             )
             elapsed = time.time() - start_time
             

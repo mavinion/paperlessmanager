@@ -36,7 +36,7 @@ class AIConfig(BaseModel):
     """
     
     # Flexible Model-Konfiguration (empfohlen)
-    model: str = "ollama/llama3.2"
+    model: str = ""
     
     # Provider-spezifische Einstellungen
     api_key: Optional[str] = None

@@ -27,7 +27,7 @@ ai:
   #   openai/custom-model      - Eigene API (z.B. LocalAI, vLLM)
   # ============================================================
   
-  model: "ollama/llama3.2"
+  model: "ollama/qwen3.5:9b"  # provider/model format (e.g. ollama/llama3.2, openai/gpt-4)
   
   # API-Key (für Cloud-Provider)
   # Kann auch über Umgebungsvariable AI_API_KEY gesetzt werden
@@ -79,7 +79,7 @@ analysis:
 
 # --- Ollama (lokal, kostenlos) ---
 # ai:
-#   model: "ollama/llama3.2"
+#   model: "ollama/qwen3.5:9b"  # provider/model format (e.g. ollama/llama3.2, openai/gpt-4)
 #   api_base: "http://localhost:11434"
 
 # --- OpenAI ---
